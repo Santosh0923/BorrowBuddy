@@ -21,15 +21,23 @@ DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
 
 
-DATABASE_URL = os.getenv("DATABASE_URL") or URL.create(
-    drivername="postgresql+psycopg",
-    username=DB_USER,
-    password=DB_PASSWORD,
-    host=DB_HOST,
-    port=int(DB_PORT or 5432),
-    database=DB_NAME,
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
+if DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgresql://",
+        "postgresql+psycopg://",
+        1,
+    )
+else:
+    DATABASE_URL = URL.create(
+        drivername="postgresql+psycopg",
+        username=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=int(DB_PORT or 5432),
+        database=DB_NAME,
+    )
 
 engine = create_engine(
     DATABASE_URL,
