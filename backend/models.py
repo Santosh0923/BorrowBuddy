@@ -13,6 +13,9 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
+    mfa_secret = Column(String(64), nullable=True)
+    mfa_enabled = Column(Boolean, nullable=False, default=False)
+
     name = Column(String(100), nullable=False)
 
     email = Column(

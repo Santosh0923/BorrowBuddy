@@ -1,0 +1,46 @@
+services:
+
+  backend1:
+    build:
+      context: ./backend
+    container_name: borrowbuddy-backend1
+    environment:
+      INSTANCE_ID: backend1
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    expose:
+      - "8000"
+
+  backend2:
+    build:
+      context: ./backend
+    container_name: borrowbuddy-backend2
+    environment:
+      INSTANCE_ID: backend2
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    expose:
+      - "8000"
+
+  backend3:
+    build:
+      context: ./backend
+    container_name: borrowbuddy-backend3
+    environment:
+      INSTANCE_ID: backend3
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:alpine
+    container_name: borrowbuddy-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend1
+      - backend2
+      - backend3

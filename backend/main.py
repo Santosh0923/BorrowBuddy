@@ -1,9 +1,10 @@
 import os
 from datetime import date, datetime, timezone, timedelta
 import json
+import pyotp
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
@@ -40,6 +41,14 @@ app = FastAPI(
     description="Cloud-Based Campus Resource Lending and Custody Management Platform",
     version="1.0.0",
 )
+
+INSTANCE_ID = os.getenv("INSTANCE_ID", "unknown")
+
+@app.middleware("http")
+async def add_instance_header(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Backend-Instance"] = INSTANCE_ID
+    return response
 
 
 @app.exception_handler(IntegrityError)
@@ -301,6 +310,7 @@ def register(
 )
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
+    otp: str | None = Form(default=None),
     db: Session = Depends(get_write_db),
 ):
     email = form_data.username.strip().lower()
@@ -328,6 +338,29 @@ def login(
             detail="Account is deactivated",
         )
 
+    # MFA check
+    if user.mfa_enabled:
+        if not otp:
+            raise HTTPException(
+                status_code=401,
+                detail="MFA code required",
+            )
+
+        if not user.mfa_secret:
+            raise HTTPException(
+                status_code=401,
+                detail="MFA configuration error",
+            )
+
+        if not pyotp.TOTP(user.mfa_secret).verify(
+            otp,
+            valid_window=1,
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid MFA code",
+            )
+
     token = create_access_token(
         user_id=user.id,
         email=user.email,
@@ -341,8 +374,6 @@ def login(
         "name": user.name,
         "user_id": user.id,
     }
-
-
 
 @app.get(
     "/auth/me",
@@ -881,7 +912,63 @@ def approve_request(
 
     return enrich_request_response(borrow_request, db)
 
+@app.post("/auth/mfa/setup")
+def setup_mfa(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_write_db),
+):
+    user = db.query(models.User).filter(
+        models.User.id == current_user.id
+    ).first()
 
+    secret = pyotp.random_base32()
+
+    user.mfa_secret = secret
+    user.mfa_enabled = False
+
+    db.commit()
+
+    provisioning_uri = pyotp.TOTP(secret).provisioning_uri(
+        name=user.email,
+        issuer_name="BorrowBuddy"
+    )
+
+    return {
+        "secret": secret,
+        "provisioning_uri": provisioning_uri
+    }
+
+@app.post("/auth/mfa/verify")
+def verify_mfa(
+    data: schemas.MFAVerifyRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_write_db),
+):
+    user = db.query(models.User).filter(
+        models.User.id == current_user.id
+    ).first()
+
+    if not user.mfa_secret:
+        raise HTTPException(
+            status_code=400,
+            detail="MFA setup has not been started"
+        )
+
+    if not pyotp.TOTP(user.mfa_secret).verify(
+        data.code,
+        valid_window=1
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid authenticator code"
+        )
+
+    user.mfa_enabled = True
+    db.commit()
+
+    return {
+        "message": "MFA enabled successfully"
+    }
 
 @app.post(
     "/requests/{request_id}/reject",

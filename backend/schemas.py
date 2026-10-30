@@ -229,3 +229,7 @@ class CustodianAssignment(BaseModel):
     custodian_id: int
     reason: str = Field(min_length=1, max_length=2000)
     model_config = ConfigDict(str_strip_whitespace=True)
+
+
+class MFAVerifyRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6)
